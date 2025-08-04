@@ -10,9 +10,11 @@
 . ScriptFunctions
 Import Alien
 
+
 getversion() {
+
    local prog=$(echo "$1" | sed 's,\(.*\),\L\1,g')
-   local proginfo=$($pip list | sed 's,\(.*\),\L\1,g' | grep "^${prog} ")
+   local proginfo=$($pip list 2>/dev/null | sed 's,\(.*\),\L\1,g' | grep "^${prog} ")
    if [ -z "$proginfo" ]
    then exit 1
    else echo "$proginfo" | cut -d\( -f2 | cut -d\) -f1
@@ -23,21 +25,28 @@ getinstallversion() {
    prog="$1"
    versions=($(python${python_major} - << EOF
 import json
+from packaging.version import Version
+
 try:
    from urllib2 import urlopen, Request
-except ImportError:
+   def load_json(res):
+      return json.load(res)
+
+except ModuleNotFoundError:
    from urllib.request import urlopen, Request
-from pkg_resources import parse_version 
+   def load_json(res):
+      return json.loads('\n'.join([l.decode() for l in res.readlines()]))
+
 def available_versions(prog):
    try:
-     url = "https://pypi.python.org/pypi/%s/json" %prog
-     data = json.load(urlopen(Request(url)))
-     versions = list(data["releases"].keys())
-     # sort available versions newest to oldest
-     versions.sort(key=parse_version, reverse=True)
-     return versions
-   except:
-     return ''
+      url = "https://pypi.python.org/pypi/%s/json" %prog
+      data = load_json(urlopen(Request(url)))
+      versions = list(data["releases"].keys())
+      versions.sort(key=Version, reverse=True)
+      return versions
+
+   except Exception as e:
+      return []
 print("\n".join(available_versions("$prog")))
 EOF
    ))
@@ -97,9 +106,14 @@ prog="$2"
 
 case "$command" in
    --getversion)
-      echo $(getversion "$2")
+      ver=$(getversion "$2")
+      [ $? -eq 0 ] && echo $ver || exit $?  # propagate the error
       ;;
    --getinstallversion)
+       [ -z "$(getversion 'packaging')" ] && {
+         echo "pip module 'packaging' (see PEP440) not found, installing it first" >&2
+         install packaging >&2 || exit 1
+      }
       echo $(getinstallversion "$2" "$3" "$4")
       ;;
    --greater-than)
@@ -112,7 +126,7 @@ case "$command" in
       lower="$3"
       upper="$4"
       ver=$(getversion "$2")
-	  In_Version_Range "$lower" "$ver" "$upper"
+      In_Version_Range "$lower" "$ver" "$upper"
       ;;
    --have-manager)
       which pip${python_major}>/dev/null 2>&1 || exit 1

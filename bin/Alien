@@ -40,7 +40,12 @@ alienpkg="${prog#*:}"
 
 if [[ -z "$alientype" || -z "$alienpkg" ]]
 then
-   Die "missing program name"
+   Die "missing program name, format shoud be 'AlienType:program'"
+fi
+
+if [[ ! -x /System/Index/bin/Alien-$alientype ]]
+then
+    Die "$alientype is not a valid alientype"
 fi
 
 exec Alien-$alientype $mode $alienpkg "$(Arg 2)" "$(Arg 3)"
